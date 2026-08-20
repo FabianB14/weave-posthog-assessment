@@ -123,6 +123,15 @@ function creditLogin(pr: PullRequestRecord): string {
   return pr.author.login
 }
 
+function creditKind(pr: PullRequestRecord): 'human' | 'agent-or-bot' {
+  // If a PR explicitly says a human drove the work, credit the DRI as a human even when
+  // the GitHub author itself is a bot/agent account. Agent usage is reported separately.
+  if (pr.agency === 'human_driven_agent_assisted' && pr.attributedHuman) return 'human'
+  return pr.author.type === 'Bot' || pr.agency === 'fully_autonomous' || pr.agency === 'agent_or_bot_unclear'
+    ? 'agent-or-bot'
+    : 'human'
+}
+
 export function rankEngineers(prs: PullRequestRecord[]): RankedEngineer[] {
   const authored = new Map<string, Array<{ pr: PullRequestRecord; score: ScoreBreakdown }>>()
   const reviews = new Map<string, number[]>()
@@ -134,7 +143,7 @@ export function rankEngineers(prs: PullRequestRecord[]): RankedEngineer[] {
     const contributions = authored.get(login) ?? []
     contributions.push({ pr, score })
     authored.set(login, contributions)
-    kinds.set(login, pr.author.type === 'Bot' || pr.agency === 'fully_autonomous' || pr.agency === 'agent_or_bot_unclear' ? 'agent-or-bot' : 'human')
+    kinds.set(login, creditKind(pr))
 
     if (pr.reviewsEnriched) {
       for (const review of pr.reviews) {
