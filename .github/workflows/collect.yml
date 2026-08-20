@@ -1,0 +1,42 @@
+name: Collect PostHog data
+
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: Start date (YYYY-MM-DD)
+        required: true
+        default: '2026-05-22'
+      to:
+        description: End date (YYYY-MM-DD)
+        required: true
+        default: '2026-08-20'
+      enrich:
+        description: Number of globally high-priority PRs to enrich with reviews
+        required: true
+        default: '400'
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Collect
+        env:
+          GH_TOKEN: ${{ secrets.POSTHOG_GH_TOKEN || github.token }}
+        run: npm run collect -- --from '${{ inputs.from }}' --to '${{ inputs.to }}' --enrich '${{ inputs.enrich }}'
+      - name: Commit dataset
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- public/data
+          git diff --cached --quiet && exit 0
+          git commit -m 'data: refresh PostHog impact dataset'
+          git push

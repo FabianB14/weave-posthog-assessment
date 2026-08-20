@@ -9,19 +9,13 @@ export interface Actor {
   type: 'User' | 'Bot' | 'Unknown'
 }
 
-export interface FileChange {
-  path: string
-  additions: number
-  deletions: number
-  changeType: string
-}
-
 export interface ReviewSignal {
   author: Actor
   state: string
   bodyLength: number
+  inlineComments: number
+  inlineCommentLength: number
   submittedAt: string | null
-  threadComments: number
 }
 
 export interface PullRequestRecord {
@@ -36,18 +30,16 @@ export interface PullRequestRecord {
   agents: string[]
   labels: string[]
   assignees: string[]
-  additions: number
-  deletions: number
-  changedFiles: number
-  files: FileChange[]
-  filesTruncated: boolean
+  scope: string | null
   comments: number
-  reviewThreads: number
-  resolvedReviewThreads: number
-  closingIssues: { number: number; title: string; url: string }[]
-  reviews: ReviewSignal[]
+  reactions: number
+  automated: boolean
+  linkedIssues: number[]
   bodySignals: string[]
   evidence: string[]
+  reverted: boolean
+  reviewsEnriched: boolean
+  reviews: ReviewSignal[]
 }
 
 export interface MonthShard {
@@ -64,6 +56,8 @@ export interface DataManifest {
   minDate: string | null
   maxDate: string | null
   prCount: number
+  reviewEnrichedPrs?: number
+  methodologyVersion?: string
 }
 
 export interface ScoreBreakdown {

@@ -1,118 +1,119 @@
 import type { PullRequestRecord, RankedEngineer, ScoreBreakdown } from './types'
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
-const has = (value: string, pattern: RegExp) => pattern.test(value.toLowerCase())
-const fileHas = (pr: PullRequestRecord, pattern: RegExp) => pr.files.some((file) => pattern.test(file.path))
+const signal = (pr: PullRequestRecord, value: string) => pr.bodySignals.includes(value)
+const anySignal = (pr: PullRequestRecord, values: string[]) => values.some((value) => signal(pr, value))
+const round = (value: number) => Math.round(value * 10) / 10
 
 export function scorePullRequest(pr: PullRequestRecord): ScoreBreakdown {
-  const text = `${pr.title} ${pr.labels.join(' ')} ${pr.bodySignals.join(' ')}`.toLowerCase()
   const reasons: string[] = []
+  const lowerTitle = pr.title.toLowerCase()
 
   let outcome = 2
-  if (has(text, /security|permission|auth|data loss|incident|reliab|corrupt|vulnerab/)) {
+  if (pr.automated) {
+    outcome = 1
+    reasons.push('Automated maintenance: counted, but not treated as engineering outcome by itself')
+  } else if (anySignal(pr, ['security', 'reliability', 'data_integrity'])) {
     outcome = 5
-    reasons.push('High-stakes security/reliability outcome')
-  } else if (has(text, /feat|launch|new product|new api|new endpoint|ship|enable/)) {
-    outcome = 4
-    reasons.push('Ships a user/product capability')
-  } else if (has(text, /fix|bug|regression|correct|repair/)) {
+    reasons.push('High-stakes security/reliability/data-integrity outcome')
+  } else if (anySignal(pr, ['new_capability', 'new_product', 'public_surface']) || lowerTitle.startsWith('feat')) {
+    outcome = 4.2
+    reasons.push('Ships a product or platform capability')
+  } else if (signal(pr, 'bug_fix') || lowerTitle.startsWith('fix')) {
     outcome = 3.5
-    reasons.push('Fixes incorrect behavior')
-  } else if (has(text, /refactor|simplif|cleanup|chore/)) {
-    outcome = 2.5
-    reasons.push('Improves the engineering system')
+    reasons.push('Fixes incorrect user or system behavior')
+  } else if (signal(pr, 'refactor') || lowerTitle.startsWith('refactor')) {
+    outcome = 2.8
+    reasons.push('Improves system structure without claiming feature impact')
   }
-  if (pr.closingIssues.length > 0) {
-    outcome = clamp(outcome + 0.4, 1, 5)
-    reasons.push(`Closes ${pr.closingIssues.length} linked issue${pr.closingIssues.length === 1 ? '' : 's'}`)
+  if (pr.linkedIssues.length > 0) {
+    outcome = clamp(outcome + 0.3, 1, 5)
+    reasons.push(`Explicitly closes/fixes ${pr.linkedIssues.length} issue${pr.linkedIssues.length === 1 ? '' : 's'}`)
   }
 
-  const roots = new Set(pr.files.map((f) => f.path.split('/')[0]).filter(Boolean))
   let reach = 1.5
-  if (roots.size >= 3) reach += 0.75
-  if (fileHas(pr, /^(posthog|ee|common|rust|services|tools)\//)) {
+  if (signal(pr, 'cross_product')) {
+    reach += 1.4
+    reasons.push('Explicit cross-product or fleet-wide reach')
+  }
+  if (signal(pr, 'shared_primitive')) {
     reach += 1.1
-    reasons.push('Touches shared/core platform code')
+    reasons.push('Creates/changes a shared primitive')
   }
-  if (fileHas(pr, /migrations?|schema|openapi|api\/|routes?|frontend\/generated/i)) {
-    reach += 0.7
-    reasons.push('Changes an API/schema/data contract')
+  if (signal(pr, 'public_surface')) {
+    reach += 0.9
+    reasons.push('Changes a public/API/schema surface')
   }
-  if (fileHas(pr, /\.github\/|terraform|helm|charts|docker|dagster|temporal|ci\//i)) {
-    reach += 0.75
-    reasons.push('Affects delivery or platform infrastructure')
+  if (signal(pr, 'devex')) {
+    reach += 0.8
+    reasons.push('Developer-system impact can reach many engineers')
   }
-  const frontend = fileHas(pr, /frontend\//i)
-  const backend = fileHas(pr, /backend\/|posthog\/|ee\//i)
-  if (frontend && backend) reach += 0.45
+  if (signal(pr, 'migration')) reach += 0.45
+  if (signal(pr, 'user_facing')) reach += 0.35
   reach = clamp(reach, 1, 5)
 
-  let durability = 1.5
-  if (fileHas(pr, /test|spec\.|__tests__|tests\//i)) {
-    durability += 1.25
-    reasons.push('Adds or updates automated tests')
+  let durability = 1.4
+  if (signal(pr, 'automated_tests')) {
+    durability += 0.9
+    reasons.push('Automated verification evidence')
   }
-  if (fileHas(pr, /migration/i)) {
+  if (signal(pr, 'e2e_or_live_test')) {
+    durability += 0.75
+    reasons.push('End-to-end/live/manual verification evidence')
+  }
+  if (signal(pr, 'docs_or_architecture')) durability += 0.45
+  if (signal(pr, 'migration')) durability += 0.45
+  if (anySignal(pr, ['rollout_safety', 'idempotency', 'backward_compat'])) {
     durability += 0.7
-    reasons.push('Carries explicit migration work')
+    reasons.push('Rollout/backward-compatibility/idempotency safeguards')
   }
-  if (fileHas(pr, /README|ARCHITECTURE|AGENTS\.md|docs\//i)) {
-    durability += 0.55
-    reasons.push('Leaves durable docs/architecture context')
+  if (signal(pr, 'observability')) durability += 0.35
+  if (signal(pr, 'not_tested')) {
+    durability -= 0.9
+    reasons.push('Explicitly notes an untested surface')
   }
-  if (has(text, /idempot|backward|rollback|fail.closed|guard|dedup|rate limit|observab|hardening|safety/)) {
-    durability += 0.85
-    reasons.push('Includes rollout/safety/operability evidence')
+  if (pr.reverted) {
+    durability -= 2.2
+    reasons.push('Reverted within the analyzed window')
   }
   durability = clamp(durability, 1, 5)
 
   let engineeringLeverage = 0
-  if (fileHas(pr, /^tools\/|\.github\/|hogli|owners|codeowners|ci\//i) || has(text, /devex|developer experience|tooling|automation/)) {
-    engineeringLeverage += 8
-    reasons.push('Improves developer/tooling leverage')
-  }
-  if (fileHas(pr, /^(posthog|common|services)\//) && roots.size >= 2) engineeringLeverage += 5
-  if (has(text, /mcp|agent|scout|reviewhog|codex|claude|automation/)) {
-    engineeringLeverage += 5
-    reasons.push('Builds reusable automation/agent leverage')
-  }
-  if (has(text, /refactor|simplif|single source|shared|reusable|resolver|primitive/)) {
-    engineeringLeverage += 4
-    reasons.push('Reduces future implementation cost')
-  }
-  if (fileHas(pr, /owners\.yaml|CODEOWNERS|ARCHITECTURE|AGENTS\.md/i)) engineeringLeverage += 3
+  if (signal(pr, 'shared_primitive')) engineeringLeverage += 8
+  if (signal(pr, 'devex')) engineeringLeverage += 8
+  if (signal(pr, 'agent_automation')) engineeringLeverage += 6
+  if (signal(pr, 'cross_product')) engineeringLeverage += 5
+  if (signal(pr, 'ownership')) engineeringLeverage += 4
+  if (signal(pr, 'refactor')) engineeringLeverage += 4
+  if (anySignal(pr, ['backward_compat', 'idempotency'])) engineeringLeverage += 2
+  if (pr.automated) engineeringLeverage = Math.min(engineeringLeverage, 2)
   engineeringLeverage = clamp(engineeringLeverage, 0, 25)
 
   const baseImpact = outcome * reach * durability
-  const total = baseImpact + engineeringLeverage
   return {
     outcome: round(outcome),
     reach: round(reach),
     durability: round(durability),
     engineeringLeverage: round(engineeringLeverage),
     baseImpact: round(baseImpact),
-    total: round(total),
+    total: round(baseImpact + engineeringLeverage),
     reasons: reasons.slice(0, 5),
   }
 }
 
 function reviewLeverage(pr: PullRequestRecord, reviewer: string): number {
-  const reviews = pr.reviews.filter((review) => review.author.login === reviewer)
-  if (!reviews.length) return 0
-  const target = scorePullRequest(pr)
-  let value = 0
-  for (const review of reviews) {
-    const state = review.state.toUpperCase()
-    let v = state === 'CHANGES_REQUESTED' ? 4.5 : state === 'APPROVED' ? 3 : 1.5
-    if (review.bodyLength >= 120) v += 1.5
-    if (review.threadComments > 0) v += Math.min(2, review.threadComments * 0.5)
-    value += v
-  }
-  return value * (0.8 + Math.min(0.5, target.total / 220))
+  const review = pr.reviews.find((item) => item.author.login === reviewer)
+  if (!review) return 0
+  const state = review.state.toUpperCase()
+  let value = state === 'CHANGES_REQUESTED' ? 4.5 : state === 'APPROVED' ? 3 : 1.5
+  if (review.bodyLength + review.inlineCommentLength >= 160) value += 1.5
+  if (review.inlineComments > 0) value += Math.min(2.5, review.inlineComments * 0.5)
+  const targetImpact = scorePullRequest(pr).total
+  return value * (0.75 + Math.min(0.65, targetImpact / 150))
 }
 
 function diminishing(values: number[]): number {
-  return values
+  return [...values]
     .sort((a, b) => b - a)
     .reduce((sum, value, index) => sum + value / Math.sqrt(index + 1), 0)
 }
@@ -124,26 +125,28 @@ function creditLogin(pr: PullRequestRecord): string {
 
 export function rankEngineers(prs: PullRequestRecord[]): RankedEngineer[] {
   const authored = new Map<string, Array<{ pr: PullRequestRecord; score: ScoreBreakdown }>>()
-  const reviews = new Map<string, Array<{ value: number; pr: PullRequestRecord }>>()
+  const reviews = new Map<string, number[]>()
   const kinds = new Map<string, 'human' | 'agent-or-bot'>()
 
   for (const pr of prs) {
     const login = creditLogin(pr)
     const score = scorePullRequest(pr)
-    const items = authored.get(login) ?? []
-    items.push({ pr, score })
-    authored.set(login, items)
-    kinds.set(login, pr.author.type === 'Bot' || pr.agency === 'fully_autonomous' ? 'agent-or-bot' : 'human')
+    const contributions = authored.get(login) ?? []
+    contributions.push({ pr, score })
+    authored.set(login, contributions)
+    kinds.set(login, pr.author.type === 'Bot' || pr.agency === 'fully_autonomous' || pr.agency === 'agent_or_bot_unclear' ? 'agent-or-bot' : 'human')
 
-    const reviewers = new Set(pr.reviews.map((review) => review.author.login).filter(Boolean))
-    for (const reviewer of reviewers) {
-      if (reviewer === login) continue
-      const value = reviewLeverage(pr, reviewer)
-      if (!value) continue
-      const reviewItems = reviews.get(reviewer) ?? []
-      reviewItems.push({ value, pr })
-      reviews.set(reviewer, reviewItems)
-      if (!kinds.has(reviewer)) kinds.set(reviewer, 'human')
+    if (pr.reviewsEnriched) {
+      for (const review of pr.reviews) {
+        const reviewer = review.author.login
+        if (!reviewer || reviewer === login || review.author.type === 'Bot') continue
+        const value = reviewLeverage(pr, reviewer)
+        if (!value) continue
+        const values = reviews.get(reviewer) ?? []
+        values.push(value)
+        reviews.set(reviewer, values)
+        if (!kinds.has(reviewer)) kinds.set(reviewer, 'human')
+      }
     }
   }
 
@@ -152,27 +155,22 @@ export function rankEngineers(prs: PullRequestRecord[]): RankedEngineer[] {
     .map((login) => {
       const contributions = (authored.get(login) ?? []).sort((a, b) => b.score.total - a.score.total)
       const authoredImpact = diminishing(contributions.map((item) => item.score.total))
-      const reviewItems = reviews.get(login) ?? []
-      const collaborationLeverage = Math.min(45, diminishing(reviewItems.map((item) => item.value)))
-      const totalRaw = authoredImpact + collaborationLeverage
-      const assistedRaw = contributions
-        .filter((item) => item.pr.agency === 'human_driven_agent_assisted')
-        .reduce((sum, item) => sum + item.score.total, 0)
-      const allRaw = contributions.reduce((sum, item) => sum + item.score.total, 0)
+      const reviewValues = reviews.get(login) ?? []
+      const collaborationLeverage = Math.min(45, diminishing(reviewValues))
+      const rawTotal = contributions.reduce((sum, item) => sum + item.score.total, 0)
+      const assisted = contributions.filter((item) => item.pr.agency === 'human_driven_agent_assisted').reduce((sum, item) => sum + item.score.total, 0)
       return {
         login,
         kind: kinds.get(login) ?? 'human',
-        score: round(totalRaw),
+        score: round(authoredImpact + collaborationLeverage),
         authoredImpact: round(authoredImpact),
         collaborationLeverage: round(collaborationLeverage),
         prCount: contributions.length,
-        reviewCount: reviewItems.length,
-        agentAssistedImpactShare: allRaw ? round((assistedRaw / allRaw) * 100) : 0,
+        reviewCount: reviewValues.length,
+        agentAssistedImpactShare: rawTotal ? round((assisted / rawTotal) * 100) : 0,
         topContributions: contributions.slice(0, 4),
       }
     })
     .filter((engineer) => engineer.prCount > 0 || engineer.collaborationLeverage >= 4)
     .sort((a, b) => b.score - a.score)
 }
-
-const round = (value: number) => Math.round(value * 10) / 10
