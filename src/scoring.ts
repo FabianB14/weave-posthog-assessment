@@ -113,10 +113,10 @@ function reviewLeverage(pr: PullRequestRecord, reviewer: string): number {
   return value * (0.75 + Math.min(0.65, targetImpact / 150))
 }
 
-function diminishing(values: number[]): number {
-  return [...values]
-    .sort((a, b) => b - a)
-    .reduce((sum, value, index) => sum + value / Math.sqrt(index + 1), 0)
+function topEvidenceAverage(values: number[], limit: number): number {
+  const top = [...values].sort((a, b) => b - a).slice(0, limit)
+  if (top.length === 0) return 0
+  return top.reduce((sum, value) => sum + value, 0) / top.length
 }
 
 function creditLogin(pr: PullRequestRecord): string {
@@ -164,16 +164,27 @@ export function rankEngineers(prs: PullRequestRecord[]): RankedEngineer[] {
   return [...logins]
     .map((login) => {
       const contributions = (authored.get(login) ?? []).sort((a, b) => b.score.total - a.score.total)
-      const authoredImpact = diminishing(contributions.map((item) => item.score.total))
+
+      // Raw authored volume has zero weight. We use the average quality of an engineer's
+      // best three contributions so a long tail of tiny PRs cannot lift the ranking.
+      const highImpactWork = topEvidenceAverage(contributions.map((item) => item.score.total), 3)
+
+      // Review volume also has no direct weight. We score the quality of up to five strongest
+      // reviews on important enriched PRs, then scale it so collaboration can materially
+      // change the leaderboard instead of acting as a small bonus.
       const reviewValues = reviews.get(login) ?? []
-      const collaborationLeverage = Math.min(45, diminishing(reviewValues))
+      const collaborationLeverage = Math.min(80, topEvidenceAverage(reviewValues, 5) * 8)
+
       const rawTotal = contributions.reduce((sum, item) => sum + item.score.total, 0)
-      const assisted = contributions.filter((item) => item.pr.agency === 'human_driven_agent_assisted').reduce((sum, item) => sum + item.score.total, 0)
+      const assisted = contributions
+        .filter((item) => item.pr.agency === 'human_driven_agent_assisted')
+        .reduce((sum, item) => sum + item.score.total, 0)
+
       return {
         login,
         kind: kinds.get(login) ?? 'human',
-        score: round(authoredImpact + collaborationLeverage),
-        authoredImpact: round(authoredImpact),
+        score: round(highImpactWork + collaborationLeverage),
+        highImpactWork: round(highImpactWork),
         collaborationLeverage: round(collaborationLeverage),
         prCount: contributions.length,
         reviewCount: reviewValues.length,
