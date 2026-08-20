@@ -1,41 +1,10 @@
-name: Recover PostHog dataset
+name: Static dataset notice
 
 on:
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
-  recover-data:
+  static-data-only:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: feature/impact-dashboard
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm install
-      - name: Collect dataset if missing
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if grep -q '"prCount": 0' public/data/manifest.json; then
-            npm run collect -- --from '2026-05-22' --to '2026-08-20' --enrich '400'
-          else
-            echo 'Dataset already present; nothing to recover.'
-          fi
-      - name: Commit and rebase dataset safely
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- public/data
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m 'data: refresh PostHog impact dataset'
-          git fetch origin feature/impact-dashboard
-          git rebase origin/feature/impact-dashboard
-          git push origin HEAD:feature/impact-dashboard
+      - run: echo 'Dataset is checked into public/data; this repository does not query PostHog.'
