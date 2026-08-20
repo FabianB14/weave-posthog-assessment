@@ -1,8 +1,15 @@
 {
-  "generatedAt": null,
+  "generatedAt": "2026-08-20T21:50:41.540Z",
   "sourceRepo": "PostHog/posthog",
-  "availableMonths": [],
-  "minDate": null,
-  "maxDate": null,
-  "prCount": 0
+  "availableMonths": [
+    "2026-05",
+    "2026-06",
+    "2026-07",
+    "2026-08"
+  ],
+  "minDate": "2026-05-22",
+  "maxDate": "2026-08-20",
+  "prCount": 13833,
+  "reviewEnrichedPrs": 536,
+  "methodologyVersion": "semantic-v2"
 }
