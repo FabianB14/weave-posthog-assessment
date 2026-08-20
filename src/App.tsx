@@ -45,15 +45,24 @@ function App() {
   const humanRanking = ranking.filter((engineer) => engineer.kind === 'human')
   const agentRanking = ranking.filter((engineer) => engineer.kind === 'agent-or-bot')
   const topFive = humanRanking.slice(0, 5)
-  // A minimum activity floor avoids calling a one-off contributor the "least impactful" person.
   const lowerObserved = humanRanking.filter((engineer) => engineer.prCount >= 5).slice(-5).reverse()
   const agentAssisted = prs.filter((pr) => pr.agency === 'human_driven_agent_assisted').length
   const autonomous = prs.filter((pr) => pr.agency === 'fully_autonomous').length
 
+  function applyPreset(days: number) {
+    if (!manifest?.minDate || !manifest.maxDate) return
+    const end = new Date(`${manifest.maxDate}T00:00:00Z`)
+    const start = new Date(end)
+    start.setUTCDate(start.getUTCDate() - (days - 1))
+    const candidate = start.toISOString().slice(0, 10)
+    setFrom(candidate < manifest.minDate ? manifest.minDate : candidate)
+    setTo(manifest.maxDate)
+  }
+
   if (error) return <main className="shell"><div className="empty"><h1>Could not load dashboard</h1><p>{error}</p></div></main>
   if (!manifest && loading) return <main className="shell"><div className="empty">Loading impact data…</div></main>
   if (manifest && manifest.availableMonths.length === 0) {
-    return <main className="shell"><div className="empty"><h1>Collector is ready</h1><p>The dashboard is waiting for the checked-in PostHog JSON dataset.</p></div></main>
+    return <main className="shell"><div className="empty"><h1>Static dataset unavailable</h1><p>No checked-in JSON shards were found.</p></div></main>
   }
 
   return (
@@ -62,27 +71,34 @@ function App() {
         <div>
           <div className="eyebrow">PostHog · engineering impact</div>
           <h1>Who created the most durable leverage?</h1>
-          <p className="subtitle">Outcome × reach × durability, plus engineering and collaboration leverage. Commits, LOC, and file counts are deliberately not scoring inputs.</p>
+          <p className="subtitle">The leaderboard is recomputed in-browser from checked-in PR JSON whenever the date range changes. No GitHub API calls are made by the app.</p>
         </div>
-        <div className="range">
-          <label>From<input type="date" value={from} min={manifest?.minDate ?? undefined} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
-          <span>→</span>
-          <label>To<input type="date" value={to} min={from} max={manifest?.maxDate ?? undefined} onChange={(e) => setTo(e.target.value)} /></label>
+        <div className="range-wrap">
+          <div className="presets">
+            <button onClick={() => applyPreset(30)}>30d</button>
+            <button onClick={() => applyPreset(60)}>60d</button>
+            <button onClick={() => applyPreset(90)}>90d</button>
+          </div>
+          <div className="range">
+            <label>From<input type="date" value={from} min={manifest?.minDate ?? undefined} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
+            <span>→</span>
+            <label>To<input type="date" value={to} min={from} max={manifest?.maxDate ?? undefined} onChange={(e) => setTo(e.target.value)} /></label>
+          </div>
         </div>
       </header>
 
       <section className="metrics">
-        <Metric value={prs.length.toLocaleString()} label="merged PRs semantically scanned" />
-        <Metric value={humanRanking.length.toLocaleString()} label="human contributors with evidence" />
+        <Metric value={prs.length.toLocaleString()} label="merged PRs in selected range" />
+        <Metric value={humanRanking.length.toLocaleString()} label="human contributors ranked" />
         <Metric value={`${Math.round((agentAssisted / Math.max(1, prs.length)) * 100)}%`} label="human-driven, agent-assisted PRs" />
         <Metric value={autonomous.toLocaleString()} label="fully autonomous PRs detected" />
       </section>
 
-      {fetched.length > 0 && <div className="cache-note">Loaded only missing cache shards: {fetched.join(', ')}</div>}
+      {fetched.length > 0 && <div className="cache-note">Loaded static JSON shards: {fetched.join(', ')}</div>}
 
       <section className="content-grid">
         <div className="leaderboard panel">
-          <div className="section-head"><div><span className="eyebrow">Top 5 engineers</span><h2>Observed impact leaders</h2></div><span className="muted">Click a row to validate</span></div>
+          <div className="section-head"><div><span className="eyebrow">Top 5 engineers</span><h2>Observed impact leaders</h2></div><span className="muted">Changes with the selected range</span></div>
           {topFive.map((engineer, index) => {
             const isOpen = expanded === engineer.login
             const max = topFive[0]?.score || 1
@@ -108,14 +124,14 @@ function App() {
 
         <aside className="panel method">
           <span className="eyebrow">Method</span>
-          <h2>A score you can audit</h2>
+          <h2>Rules, not a stored leaderboard</h2>
           <div className="formula"><strong>Engineer impact</strong><span>diminishing(Outcome × Reach × Durability + Engineering leverage)</span><b>+</b><span>Collaboration leverage on important PRs</span></div>
-          <p><strong>All merged PRs</strong> are scanned from their problem/changes/testing text, labels, linked issues, author attribution, rollout safeguards, and revert evidence. That keeps the baseline fair at PostHog’s volume.</p>
-          <p><strong>Collaboration leverage</strong> is deliberately narrower: the collector enriches the strongest candidate PRs with actual review identities and inline discussion. Reviewing a high-impact change matters more than review volume.</p>
+          <p><strong>Every selected PR</strong> is scored from normalized evidence already present in the static JSON: problem/changes/testing signals, labels, linked issues, attribution, rollout safeguards, and revert evidence.</p>
+          <p><strong>Collaboration leverage</strong> uses the review identities and inline discussion already embedded in the static dataset for enriched PRs. Review volume alone is not rewarded.</p>
           <p><strong>Diminishing returns</strong> are applied when aggregating authored contributions, so dozens of tiny changes cannot automatically outrank a few major durable changes.</p>
           {agentRanking.length > 0 && <div className="agent-box"><strong>Agent / bot identities</strong>{agentRanking.slice(0, 3).map((agent) => <span key={agent.login}>@{agent.login} · {agent.score} observed impact</span>)}</div>}
           {lowerObserved.length > 0 && <div className="agent-box"><strong>Lowest observed GitHub signal · ≥5 PRs</strong>{lowerObserved.map((engineer) => <span key={engineer.login}>@{engineer.login} · {engineer.score} observed impact</span>)}</div>}
-          <div className="warning">“Lowest impact” here means lowest <em>observed GitHub impact</em> among contributors with at least five merged PRs in the selected window—not least valuable employee. Design, mentoring, incidents, and management are under-observed.</div>
+          <div className="warning">“Lowest impact” means lowest <em>observed GitHub impact</em> among contributors with at least five merged PRs in the selected range—not least valuable employee. Design, mentoring, incidents, and management are under-observed.</div>
         </aside>
       </section>
       {loading && <div className="loading">Recomputing range…</div>}
