@@ -78,7 +78,6 @@ function App() {
             <button onClick={() => applyPreset(30)}>30d</button>
             <button onClick={() => applyPreset(60)}>60d</button>
             <button onClick={() => applyPreset(90)}>90d</button>
-            <button onClick={() => applyPreset(180)}>180d</button>
           </div>
           <div className="range">
             <label>From<input type="date" value={from} min={manifest?.minDate ?? undefined} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
@@ -126,10 +125,11 @@ function App() {
         <aside className="panel method">
           <span className="eyebrow">Method</span>
           <h2>Quality and leverage, not activity</h2>
-          <div className="formula"><strong>Engineer impact</strong><span>average(best 3 × PR impact)</span><b>+</b><span>review leverage on important PRs</span></div>
+          <div className="formula"><strong>Engineer impact</strong><span>weighted strongest PR evidence</span><b>+</b><span>review leverage on important PRs</span></div>
           <p><strong>PR impact</strong> is Outcome × Reach × Durability + Engineering leverage, using normalized evidence already present in the static JSON: problem/changes/testing signals, labels, linked issues, rollout safeguards, and revert evidence.</p>
-          <p><strong>Collaboration leverage</strong> scores the quality of up to five strongest reviews on important enriched PRs. Substantive changes-requested feedback and inline discussion matter more than a bare approval.</p>
-          <p><strong>Activity volume has zero direct weight.</strong> Merged PR count and review count are displayed only as context. A long tail of tiny PRs or approvals cannot lift the score.</p>
+          <p><strong>High-impact work</strong> is dominated by the strongest PR. Up to two additional PRs contribute only when they clear a high-impact threshold. Low-value PRs add zero.</p>
+          <p><strong>Collaboration leverage</strong> scores the quality of up to five strongest reviews on important enriched PRs. Changes-requested feedback and substantive inline discussion matter more than a bare approval.</p>
+          <p><strong>Activity volume has zero direct weight.</strong> Merged PR count and review count are displayed only as context.</p>
           {agentRanking.length > 0 && <div className="agent-box"><strong>Agent / bot identities</strong>{agentRanking.slice(0, 3).map((agent) => <span key={agent.login}>@{agent.login} · {agent.score} observed impact</span>)}</div>}
           {lowerObserved.length > 0 && <div className="agent-box"><strong>Lowest observed GitHub signal · ≥5 PRs</strong>{lowerObserved.map((engineer) => <span key={engineer.login}>@{engineer.login} · {engineer.score} observed impact</span>)}</div>}
           <div className="warning">“Lowest impact” means lowest <em>observed GitHub impact</em> among contributors with at least five merged PRs in the selected range—not least valuable employee. Design, mentoring, incidents, and management are under-observed.</div>
