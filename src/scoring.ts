@@ -113,10 +113,20 @@ function reviewLeverage(pr: PullRequestRecord, reviewer: string): number {
   return value * (0.75 + Math.min(0.65, targetImpact / 150))
 }
 
-function topEvidenceAverage(values: number[], limit: number): number {
-  const top = [...values].sort((a, b) => b - a).slice(0, limit)
-  if (top.length === 0) return 0
-  return top.reduce((sum, value) => sum + value, 0) / top.length
+function highImpactEvidence(values: number[]): number {
+  const sorted = [...values].sort((a, b) => b - a)
+  const strongest = sorted[0] ?? 0
+  // Only genuinely strong supporting PRs add evidence. Low-value PRs are score-neutral.
+  const supporting = sorted.slice(1).filter((value) => value >= 25).slice(0, 2)
+  return strongest * 0.7 + (supporting[0] ?? 0) * 0.2 + (supporting[1] ?? 0) * 0.1
+}
+
+function reviewEvidence(values: number[]): number {
+  const weights = [0.45, 0.25, 0.15, 0.1, 0.05]
+  return [...values]
+    .sort((a, b) => b - a)
+    .slice(0, weights.length)
+    .reduce((sum, value, index) => sum + value * weights[index], 0)
 }
 
 function creditLogin(pr: PullRequestRecord): string {
@@ -125,8 +135,6 @@ function creditLogin(pr: PullRequestRecord): string {
 }
 
 function creditKind(pr: PullRequestRecord): 'human' | 'agent-or-bot' {
-  // If a PR explicitly says a human drove the work, credit the DRI as a human even when
-  // the GitHub author itself is a bot/agent account. Agent usage is reported separately.
   if (pr.agency === 'human_driven_agent_assisted' && pr.attributedHuman) return 'human'
   return pr.author.type === 'Bot' || pr.agency === 'fully_autonomous' || pr.agency === 'agent_or_bot_unclear'
     ? 'agent-or-bot'
@@ -164,17 +172,9 @@ export function rankEngineers(prs: PullRequestRecord[]): RankedEngineer[] {
   return [...logins]
     .map((login) => {
       const contributions = (authored.get(login) ?? []).sort((a, b) => b.score.total - a.score.total)
-
-      // Raw authored volume has zero weight. We use the average quality of an engineer's
-      // best three contributions so a long tail of tiny PRs cannot lift the ranking.
-      const highImpactWork = topEvidenceAverage(contributions.map((item) => item.score.total), 3)
-
-      // Review volume also has no direct weight. We score the quality of up to five strongest
-      // reviews on important enriched PRs, then scale it so collaboration can materially
-      // change the leaderboard instead of acting as a small bonus.
+      const highImpactWork = highImpactEvidence(contributions.map((item) => item.score.total))
       const reviewValues = reviews.get(login) ?? []
-      const collaborationLeverage = Math.min(80, topEvidenceAverage(reviewValues, 5) * 8)
-
+      const collaborationLeverage = Math.min(80, reviewEvidence(reviewValues) * 7)
       const rawTotal = contributions.reduce((sum, item) => sum + item.score.total, 0)
       const assisted = contributions
         .filter((item) => item.pr.agency === 'human_driven_agent_assisted')
