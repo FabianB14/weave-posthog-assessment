@@ -81,7 +81,8 @@ export function scorePullRequest(pr: PullRequestRecord): ScoreBreakdown {
   let engineeringLeverage = 0
   if (signal(pr, 'shared_primitive')) engineeringLeverage += 8
   if (signal(pr, 'devex')) engineeringLeverage += 8
-  if (signal(pr, 'agent_automation')) engineeringLeverage += 6
+  // Agent/tool attribution is deliberately score-neutral. A contribution earns leverage
+  // only through the engineering outcome it creates, never because an agent was used.
   if (signal(pr, 'cross_product')) engineeringLeverage += 5
   if (signal(pr, 'ownership')) engineeringLeverage += 4
   if (signal(pr, 'refactor')) engineeringLeverage += 4
