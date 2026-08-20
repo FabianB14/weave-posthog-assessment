@@ -60,7 +60,7 @@ GH_TOKEN=... npm run collect -- --from 2026-05-22 --to 2026-08-20 --enrich 400
 npm run dev
 ```
 
-Or run the **Collect PostHog data** GitHub Action. A `POSTHOG_GH_TOKEN` repository secret is supported; the workflow falls back to `github.token` if it can read the public source repo.
+For GitHub Actions, add a repository secret named `POSTHOG_GH_TOKEN`, then run **Collect PostHog data**. Use a read-only token suitable for GitHub's public repository/search/review APIs; the token is used only by the collector and is never shipped to the browser or Pages artifact.
 
 ## Deploy
 
