@@ -19,26 +19,26 @@ No GitHub token is required to build, view, or deploy the dashboard. CI only ins
 GitHub activity is not impact. A contribution matters when it produces a meaningful outcome, reaches an important surface, survives contact with production and future change, and makes other engineers more effective.
 
 ```text
-Contribution Impact = Outcome × Reach × Durability
-                    + Engineering Leverage
-                    + Collaboration Leverage
+PR Impact = Outcome × Reach × Durability + Engineering Leverage
+Engineer Impact = High-impact work + Collaboration Leverage
 ```
 
 - **Outcome (1–5)** — what changed for users or the system: capability, bug fix, security/reliability/data-integrity result, or structural improvement.
 - **Reach (1–5)** — how broadly it can matter: user-facing/public surfaces, cross-product work, shared primitives, migrations, or developer-system changes.
 - **Durability (1–5)** — evidence it will last: automated/end-to-end verification, rollout safety, idempotency, compatibility, observability, docs, and an in-window revert penalty.
 - **Engineering leverage (0–25)** — reusable primitives, developer tooling, ownership, simplification, compatibility, and cross-product foundations.
-- **Collaboration leverage (0–45 at engineer level)** — substantive review work on high-impact PRs. Review volume alone is not rewarded.
+- **High-impact work** — dominated by the engineer's strongest PR. Up to two additional PRs add bounded support only when they clear a high-impact threshold; low-value PRs add zero.
+- **Collaboration leverage (0–80 at engineer level)** — quality-weighted evidence from up to five strongest reviews on important enriched PRs. Changes-requested feedback and substantive inline discussion matter more than a bare approval.
 
-Commits, lines changed, additions/deletions, and number of files are deliberately **not scoring inputs**. Agent usage also earns **zero** impact points.
+Raw PR count and raw review count have **zero direct weight**. They are shown only as context. Commits, lines changed, additions/deletions, and number of files are also deliberately not scoring inputs. Agent usage earns **zero** impact points.
 
 ## Coverage
 
-The default analysis window is **2026-05-22 through 2026-08-20**, a 90-day window.
+The analysis window is **2026-05-22 through 2026-08-20**, a 90-day static dataset.
 
 The static dataset preserves the evidence needed for scoring and explanation, including PR title/body-derived signals, labels, linked issues, testing/rollout evidence, revert references, author identity, human/agent attribution, and selected review evidence for collaboration leverage.
 
-Repeated authored contributions use diminishing returns so raw PR volume does not dominate the leaderboard. Collaboration leverage is credited to reviewers rather than the PR author.
+The dashboard recomputes rankings from the selected date range in-browser using the same `src/scoring.ts` rules. A long tail of small PRs or approvals cannot increase a score simply through activity volume.
 
 ## Human + agent attribution
 
@@ -57,7 +57,7 @@ Human-driven agent-assisted work is credited to the human DRI and labeled with i
 
 ## Static date-range cache
 
-The browser keeps already-loaded month JSON in memory. If May–August is loaded and a wider range is selected, only missing month shards are requested from the deployed static site before recomputing the rankings.
+The browser keeps already-loaded month JSON in memory. If the selected range expands, only missing month shards are requested from the deployed static site before rankings are recomputed.
 
 There are no GitHub API requests in this flow.
 
@@ -70,4 +70,4 @@ npm run dev
 
 ## Deploy
 
-Merge to `main`, enable GitHub Pages with **GitHub Actions** as the source, and the Pages workflow builds/deploys the static dashboard and checked-in JSON.
+GitHub Pages builds and deploys the static dashboard and checked-in JSON from `main`.
