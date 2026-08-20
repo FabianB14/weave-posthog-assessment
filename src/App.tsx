@@ -78,6 +78,7 @@ function App() {
             <button onClick={() => applyPreset(30)}>30d</button>
             <button onClick={() => applyPreset(60)}>60d</button>
             <button onClick={() => applyPreset(90)}>90d</button>
+            <button onClick={() => applyPreset(180)}>180d</button>
           </div>
           <div className="range">
             <label>From<input type="date" value={from} min={manifest?.minDate ?? undefined} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
@@ -113,7 +114,7 @@ function App() {
                 </button>
                 {isOpen && (
                   <div className="evidence">
-                    <div className="breakdown"><span>Authored <strong>{engineer.authoredImpact}</strong></span><span>Review leverage <strong>{engineer.collaborationLeverage}</strong></span><span>{engineer.prCount} merged PRs</span><span>{engineer.reviewCount} high-impact reviews</span></div>
+                    <div className="breakdown"><span>High-impact work <strong>{engineer.highImpactWork}</strong></span><span>Review leverage <strong>{engineer.collaborationLeverage}</strong></span><span>{engineer.prCount} merged PRs · context only</span><span>{engineer.reviewCount} enriched reviews · context only</span></div>
                     <div className="contributions">{engineer.topContributions.map(({ pr, score }) => <Contribution key={pr.number} pr={pr} score={score} />)}</div>
                   </div>
                 )}
@@ -124,11 +125,11 @@ function App() {
 
         <aside className="panel method">
           <span className="eyebrow">Method</span>
-          <h2>Rules, not a stored leaderboard</h2>
-          <div className="formula"><strong>Engineer impact</strong><span>diminishing(Outcome × Reach × Durability + Engineering leverage)</span><b>+</b><span>Collaboration leverage on important PRs</span></div>
-          <p><strong>Every selected PR</strong> is scored from normalized evidence already present in the static JSON: problem/changes/testing signals, labels, linked issues, attribution, rollout safeguards, and revert evidence.</p>
-          <p><strong>Collaboration leverage</strong> uses the review identities and inline discussion already embedded in the static dataset for enriched PRs. Review volume alone is not rewarded.</p>
-          <p><strong>Diminishing returns</strong> are applied when aggregating authored contributions, so dozens of tiny changes cannot automatically outrank a few major durable changes.</p>
+          <h2>Quality and leverage, not activity</h2>
+          <div className="formula"><strong>Engineer impact</strong><span>average(best 3 × PR impact)</span><b>+</b><span>review leverage on important PRs</span></div>
+          <p><strong>PR impact</strong> is Outcome × Reach × Durability + Engineering leverage, using normalized evidence already present in the static JSON: problem/changes/testing signals, labels, linked issues, rollout safeguards, and revert evidence.</p>
+          <p><strong>Collaboration leverage</strong> scores the quality of up to five strongest reviews on important enriched PRs. Substantive changes-requested feedback and inline discussion matter more than a bare approval.</p>
+          <p><strong>Activity volume has zero direct weight.</strong> Merged PR count and review count are displayed only as context. A long tail of tiny PRs or approvals cannot lift the score.</p>
           {agentRanking.length > 0 && <div className="agent-box"><strong>Agent / bot identities</strong>{agentRanking.slice(0, 3).map((agent) => <span key={agent.login}>@{agent.login} · {agent.score} observed impact</span>)}</div>}
           {lowerObserved.length > 0 && <div className="agent-box"><strong>Lowest observed GitHub signal · ≥5 PRs</strong>{lowerObserved.map((engineer) => <span key={engineer.login}>@{engineer.login} · {engineer.score} observed impact</span>)}</div>}
           <div className="warning">“Lowest impact” means lowest <em>observed GitHub impact</em> among contributors with at least five merged PRs in the selected range—not least valuable employee. Design, mentoring, incidents, and management are under-observed.</div>
