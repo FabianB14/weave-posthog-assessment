@@ -15,6 +15,9 @@ on:
         description: Number of globally high-priority PRs to enrich with reviews
         required: true
         default: '400'
+  push:
+    branches: [feature/impact-dashboard]
+    paths: [.github/collect-trigger]
 
 permissions:
   contents: write
@@ -28,18 +31,14 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - name: Require source-repo token
-        env:
-          POSTHOG_GH_TOKEN: ${{ secrets.POSTHOG_GH_TOKEN }}
-        run: |
-          if [ -z "$POSTHOG_GH_TOKEN" ]; then
-            echo "Missing repository secret POSTHOG_GH_TOKEN. Add a fine-grained read token that can access public PostHog/posthog data."
-            exit 1
-          fi
       - name: Collect
         env:
-          GH_TOKEN: ${{ secrets.POSTHOG_GH_TOKEN }}
-        run: npm run collect -- --from '${{ inputs.from }}' --to '${{ inputs.to }}' --enrich '${{ inputs.enrich }}'
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          npm run collect --
+          --from '${{ inputs.from || '2026-05-22' }}'
+          --to '${{ inputs.to || '2026-08-20' }}'
+          --enrich '${{ inputs.enrich || '400' }}'
       - name: Commit dataset
         run: |
           git config user.name 'github-actions[bot]'
