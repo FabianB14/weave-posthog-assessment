@@ -13,6 +13,7 @@ const to = args.to
 const enrichLimit = Number(args.enrich ?? 400)
 if (!from || !to) throw new Error('Usage: npm run collect -- --from YYYY-MM-DD --to YYYY-MM-DD [--enrich 400]')
 if (new Date(from) > new Date(to)) throw new Error('--from must be <= --to')
+if (!Number.isFinite(enrichLimit) || enrichLimit < 0) throw new Error('--enrich must be a non-negative number')
 
 const REPO = 'PostHog/posthog'
 const API = 'https://api.github.com'
@@ -89,7 +90,8 @@ function classifyAgency(body, authorActor, assignees) {
     ['Codex', /\bcodex\b/i], ['Copilot', /copilot/i], ['Cursor', /\bcursor\b/i], ['Mendral', /mendral/i],
   ]
   for (const [name, pattern] of candidates) if (pattern.test(text) && !agents.includes(name)) agents.push(name)
-  if (agents.includes('Claude Code')) agents.splice(agents.indexOf('Claude'), 1)
+  const plainClaudeIndex = agents.indexOf('Claude')
+  if (agents.includes('Claude Code') && plainClaudeIndex >= 0) agents.splice(plainClaudeIndex, 1)
   return { agency, attributedHuman, agents }
 }
 
