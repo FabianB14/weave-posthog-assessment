@@ -28,9 +28,17 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - name: Require source-repo token
+        env:
+          POSTHOG_GH_TOKEN: ${{ secrets.POSTHOG_GH_TOKEN }}
+        run: |
+          if [ -z "$POSTHOG_GH_TOKEN" ]; then
+            echo "Missing repository secret POSTHOG_GH_TOKEN. Add a fine-grained read token that can access public PostHog/posthog data."
+            exit 1
+          fi
       - name: Collect
         env:
-          GH_TOKEN: ${{ secrets.POSTHOG_GH_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.POSTHOG_GH_TOKEN }}
         run: npm run collect -- --from '${{ inputs.from }}' --to '${{ inputs.to }}' --enrich '${{ inputs.enrich }}'
       - name: Commit dataset
         run: |
