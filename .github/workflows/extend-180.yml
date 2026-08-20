@@ -1,0 +1,87 @@
+name: Extend static dataset to 180 days
+
+on:
+  push:
+    branches: [feature/impact-dashboard]
+    paths:
+      - .github/workflows/extend-180.yml
+
+permissions:
+  contents: write
+
+jobs:
+  extend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Restore one-shot collector
+        run: |
+          mkdir -p scripts
+          git show 88fb158e6211776d7cdfdec5c1d9c9461d794a2e:scripts/collect.mjs > scripts/collect.mjs
+          cp public/data/months/2026-05.json /tmp/2026-05-late.json
+
+      - name: Collect missing Feb 22 through May 21 window
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/collect.mjs --from 2026-02-22 --to 2026-05-21 --enrich 400
+
+      - name: Merge with existing May-Aug static shards
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          import path from 'node:path'
+
+          const monthsDir = 'public/data/months'
+          const earlyMay = JSON.parse(fs.readFileSync(path.join(monthsDir, '2026-05.json'), 'utf8'))
+          const lateMay = JSON.parse(fs.readFileSync('/tmp/2026-05-late.json', 'utf8'))
+          const merged = new Map()
+          for (const pr of [...earlyMay.prs, ...lateMay.prs]) merged.set(pr.number, pr)
+          const mayPrs = [...merged.values()].sort((a, b) => a.mergedAt.localeCompare(b.mergedAt))
+          fs.writeFileSync(path.join(monthsDir, '2026-05.json'), JSON.stringify({
+            month: '2026-05',
+            from: mayPrs[0]?.mergedAt.slice(0, 10) ?? '2026-05-01',
+            to: mayPrs.at(-1)?.mergedAt.slice(0, 10) ?? '2026-05-31',
+            prs: mayPrs,
+          }))
+
+          const availableMonths = fs.readdirSync(monthsDir)
+            .filter((name) => /^2026-(02|03|04|05|06|07|08)\.json$/.test(name))
+            .map((name) => name.replace('.json', ''))
+            .sort()
+
+          let prCount = 0
+          let reviewEnrichedPrs = 0
+          for (const month of availableMonths) {
+            const shard = JSON.parse(fs.readFileSync(path.join(monthsDir, `${month}.json`), 'utf8'))
+            prCount += shard.prs.length
+            reviewEnrichedPrs += shard.prs.filter((pr) => pr.reviewsEnriched).length
+          }
+
+          const manifest = {
+            generatedAt: new Date().toISOString(),
+            sourceRepo: 'PostHog/posthog',
+            availableMonths,
+            minDate: '2026-02-22',
+            maxDate: '2026-08-20',
+            prCount,
+            reviewEnrichedPrs,
+            methodologyVersion: 'semantic-v2',
+          }
+          fs.writeFileSync('public/data/manifest.json', `${JSON.stringify(manifest, null, 2)}\n`)
+          NODE
+          rm -rf scripts
+
+      - name: Commit static 180-day JSON
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add public/data
+          git diff --cached --quiet && exit 0
+          git commit -m "Add 180-day PostHog impact dataset"
+          git push origin HEAD:feature/impact-dashboard
