@@ -74,7 +74,7 @@ export interface RankedEngineer {
   login: string
   kind: 'human' | 'agent-or-bot'
   score: number
-  authoredImpact: number
+  highImpactWork: number
   collaborationLeverage: number
   prCount: number
   reviewCount: number
