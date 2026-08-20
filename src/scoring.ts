@@ -113,10 +113,20 @@ function reviewLeverage(pr: PullRequestRecord, reviewer: string): number {
   return value * (0.75 + Math.min(0.65, targetImpact / 150))
 }
 
-function diminishing(values: number[]): number {
+function highImpactEvidence(values: number[]): number {
+  const sorted = [...values].sort((a, b) => b - a)
+  const strongest = sorted[0] ?? 0
+  // Only genuinely strong supporting PRs add evidence. Low-value PRs are score-neutral.
+  const supporting = sorted.slice(1).filter((value) => value >= 25).slice(0, 2)
+  return strongest * 0.7 + (supporting[0] ?? 0) * 0.2 + (supporting[1] ?? 0) * 0.1
+}
+
+function reviewEvidence(values: number[]): number {
+  const weights = [0.45, 0.25, 0.15, 0.1, 0.05]
   return [...values]
     .sort((a, b) => b - a)
-    .reduce((sum, value, index) => sum + value / Math.sqrt(index + 1), 0)
+    .slice(0, weights.length)
+    .reduce((sum, value, index) => sum + value * weights[index], 0)
 }
 
 function creditLogin(pr: PullRequestRecord): string {
@@ -125,8 +135,6 @@ function creditLogin(pr: PullRequestRecord): string {
 }
 
 function creditKind(pr: PullRequestRecord): 'human' | 'agent-or-bot' {
-  // If a PR explicitly says a human drove the work, credit the DRI as a human even when
-  // the GitHub author itself is a bot/agent account. Agent usage is reported separately.
   if (pr.agency === 'human_driven_agent_assisted' && pr.attributedHuman) return 'human'
   return pr.author.type === 'Bot' || pr.agency === 'fully_autonomous' || pr.agency === 'agent_or_bot_unclear'
     ? 'agent-or-bot'
@@ -164,16 +172,19 @@ export function rankEngineers(prs: PullRequestRecord[]): RankedEngineer[] {
   return [...logins]
     .map((login) => {
       const contributions = (authored.get(login) ?? []).sort((a, b) => b.score.total - a.score.total)
-      const authoredImpact = diminishing(contributions.map((item) => item.score.total))
+      const highImpactWork = highImpactEvidence(contributions.map((item) => item.score.total))
       const reviewValues = reviews.get(login) ?? []
-      const collaborationLeverage = Math.min(45, diminishing(reviewValues))
+      const collaborationLeverage = Math.min(80, reviewEvidence(reviewValues) * 7)
       const rawTotal = contributions.reduce((sum, item) => sum + item.score.total, 0)
-      const assisted = contributions.filter((item) => item.pr.agency === 'human_driven_agent_assisted').reduce((sum, item) => sum + item.score.total, 0)
+      const assisted = contributions
+        .filter((item) => item.pr.agency === 'human_driven_agent_assisted')
+        .reduce((sum, item) => sum + item.score.total, 0)
+
       return {
         login,
         kind: kinds.get(login) ?? 'human',
-        score: round(authoredImpact + collaborationLeverage),
-        authoredImpact: round(authoredImpact),
+        score: round(highImpactWork + collaborationLeverage),
+        highImpactWork: round(highImpactWork),
         collaborationLeverage: round(collaborationLeverage),
         prCount: contributions.length,
         reviewCount: reviewValues.length,
