@@ -1,0 +1,18 @@
+name: CI
+
+on:
+  push:
+    branches: [feature/impact-dashboard]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --check scripts/collect.mjs
+      - run: npm install
+      - run: npm run build
