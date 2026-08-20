@@ -5,6 +5,9 @@ on:
     branches: [feature/impact-dashboard]
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,3 +19,25 @@ jobs:
       - run: node --check scripts/collect.mjs
       - run: npm install
       - run: npm run build
+
+  collect:
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'one-shot collection')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Collect 90 days of PostHog data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run collect -- --from '2026-05-22' --to '2026-08-20' --enrich '400'
+      - name: Commit dataset
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- public/data
+          git diff --cached --quiet && exit 0
+          git commit -m 'data: refresh PostHog impact dataset'
+          git push
