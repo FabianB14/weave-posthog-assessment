@@ -45,13 +45,15 @@ function App() {
   const humanRanking = ranking.filter((engineer) => engineer.kind === 'human')
   const agentRanking = ranking.filter((engineer) => engineer.kind === 'agent-or-bot')
   const topFive = humanRanking.slice(0, 5)
+  // A minimum activity floor avoids calling a one-off contributor the "least impactful" person.
+  const lowerObserved = humanRanking.filter((engineer) => engineer.prCount >= 5).slice(-5).reverse()
   const agentAssisted = prs.filter((pr) => pr.agency === 'human_driven_agent_assisted').length
   const autonomous = prs.filter((pr) => pr.agency === 'fully_autonomous').length
 
   if (error) return <main className="shell"><div className="empty"><h1>Could not load dashboard</h1><p>{error}</p></div></main>
   if (!manifest && loading) return <main className="shell"><div className="empty">Loading impact data…</div></main>
   if (manifest && manifest.availableMonths.length === 0) {
-    return <main className="shell"><div className="empty"><h1>Collector is ready</h1><p>Run <code>GH_TOKEN=… npm run collect -- --from 2026-05-22 --to 2026-08-20</code>, commit <code>public/data</code>, then refresh.</p></div></main>
+    return <main className="shell"><div className="empty"><h1>Collector is ready</h1><p>The dashboard is waiting for the checked-in PostHog JSON dataset.</p></div></main>
   }
 
   return (
@@ -107,12 +109,13 @@ function App() {
         <aside className="panel method">
           <span className="eyebrow">Method</span>
           <h2>A score you can audit</h2>
-          <div className="formula"><strong>Contribution impact</strong><span>Outcome × Reach × Durability</span><b>+</b><span>Engineering leverage</span><b>+</b><span>Collaboration leverage</span></div>
+          <div className="formula"><strong>Engineer impact</strong><span>diminishing(Outcome × Reach × Durability + Engineering leverage)</span><b>+</b><span>Collaboration leverage on important PRs</span></div>
           <p><strong>All merged PRs</strong> are scanned from their problem/changes/testing text, labels, linked issues, author attribution, rollout safeguards, and revert evidence. That keeps the baseline fair at PostHog’s volume.</p>
           <p><strong>Collaboration leverage</strong> is deliberately narrower: the collector enriches the strongest candidate PRs with actual review identities and inline discussion. Reviewing a high-impact change matters more than review volume.</p>
           <p><strong>Diminishing returns</strong> are applied when aggregating authored contributions, so dozens of tiny changes cannot automatically outrank a few major durable changes.</p>
           {agentRanking.length > 0 && <div className="agent-box"><strong>Agent / bot identities</strong>{agentRanking.slice(0, 3).map((agent) => <span key={agent.login}>@{agent.login} · {agent.score} observed impact</span>)}</div>}
-          <div className="warning">“Lowest impact” should be read as lowest <em>observed GitHub impact</em> in the window—not least valuable employee. Design, mentoring, incidents, and management are under-observed.</div>
+          {lowerObserved.length > 0 && <div className="agent-box"><strong>Lowest observed GitHub signal · ≥5 PRs</strong>{lowerObserved.map((engineer) => <span key={engineer.login}>@{engineer.login} · {engineer.score} observed impact</span>)}</div>}
+          <div className="warning">“Lowest impact” here means lowest <em>observed GitHub impact</em> among contributors with at least five merged PRs in the selected window—not least valuable employee. Design, mentoring, incidents, and management are under-observed.</div>
         </aside>
       </section>
       {loading && <div className="loading">Recomputing range…</div>}
